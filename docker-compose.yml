@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  database:
+    container_name: database
+    image: postgres:13
+    restart: on-failure # Restart the container if it exits with a non-zero exit code
+    env_file:
+      - .env
+      # - POSTGRES_PASSWORD=postgres
+      # - POSTGRES_DB=postgres
+      # - POSTGRES_USER=postgres
+    ports:
+      # - ${DB_PORT}:${DB_PORT}
+      - 5432:5432 # Default port for postgres
+    volumes:
+      - db_data:/var/lib/postgresql/data # (Named volume) Mount the named volume to /var/lib/postgresql/data inside the container (so that data persists)
+    networks:
+      - dev
+
+  mongo:
+    container_name: mongo
+    image: mongo
+    restart: on-failure
+    ports:
+      - 27017:27017
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - dev
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    restart: on-failure
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    ports:
+      - 6379:6379
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 5s
+      retries: 3
+      interval: '10s'
+    networks:
+      - dev
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: redis-commander
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - 8081:8081
+    depends_on:
+      - redis
+    networks:
+      - dev
+
+  app:
+    container_name: app
+    restart: on-failure
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command: ["npm", "run", "dev"]
+    depends_on:
+      - database
+    env_file:
+      - .env
+    ports:
+      - ${PORT}:${PORT}
+    volumes:
+      - .:/usr/app # (Bind mount) Mount the current directory on the host machine to /usr/app inside the container (so that changes are reflected live)
+      - /usr/app/node_modules # Overwrite node_modules from image with the one from the host machine
+    networks:
+      - dev
+
+volumes:
+  db_data:
+    driver: local
+    name: db_data
+  redis_data:
+    driver: local
+    name: redis_data
+  mongo_data:
+    driver: local
+    name: mongo_data
+
+networks:
+  dev:
+    driver: bridge
+    name: dev
